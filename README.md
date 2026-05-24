@@ -1,146 +1,197 @@
-# 🐍 MAMBA From Scratch — PyTorch Implementation
+# 🐍 MAMBA From Scratch — Deep Learning Project
 
-> Deep Learning Project · ENIS 2025–2026
-
-Implementation complète de l'architecture **MAMBA (Selective State Space Model)** en PyTorch pur, avec comparaison contre un Transformer baseline sur la tâche de modélisation de langage au niveau caractère (TinyShakespeare).
-
----
-
-## 🎯 Objectif
-
-Comprendre et implémenter MAMBA from scratch en partant des fondations mathématiques (SSM continu → discret → sélectif), jusqu'à l'entraînement et la comparaison avec un Transformer.
+> **ENIS 2025–2026 · Deep Learning Course**  
+> Implementation of MAMBA (Selective State Space Model) from scratch in PyTorch,  
+> with a full comparison against a Transformer baseline on character-level language modeling.
 
 ---
 
-## 🏗️ Architecture
+## 📋 Table of Contents
+- [Overview](#overview)
+- [Results](#results)
+- [Repository Structure](#repository-structure)
+- [Quick Start](#quick-start)
+- [Architecture](#architecture)
+- [AI Tools Used](#ai-tools-used)
+- [References](#references)
+
+---
+
+## 🔍 Overview
+
+This project implements **MAMBA (S6 — Selective State Space Model)** completely from scratch in PyTorch, without using the official `mamba-ssm` package.
+
+**Key contributions:**
+- ✅ Full MAMBA block: `SelectiveSSM` + `Conv1D` + gating
+- ✅ **Parallel Associative Scan** — O(log L) depth instead of O(L) sequential loop
+- ✅ Transformer baseline (mini GPT) for fair comparison
+- ✅ Character-level language modeling on TinyShakespeare
+- ✅ Inference speed benchmark (tokens/second)
+- ✅ Complexity analysis: MAMBA vs Transformer vs LSTM
+
+**Why MAMBA?**
+
+| Model | Time Complexity | Memory | Parallelizable |
+|-------|----------------|--------|----------------|
+| LSTM | O(L) | O(1) | ❌ |
+| Transformer | O(L²) | O(L²) | ✅ |
+| **MAMBA (S6)** | **O(L log L)** | **O(L)** | **✅** |
+
+For L=4096: Transformer needs **16.7M ops** · MAMBA needs only **49K ops** → **341× faster**
+
+---
+
+## 📊 Results
+
+| Metric | MAMBA | Transformer |
+|--------|-------|-------------|
+| **Best Val Loss** | **1.686** | 2.010 |
+| **Best Perplexity** | **5.4** | 7.5 |
+| Parameters | 475,520 | 818,048 |
+| Avg Step Time | 134.8 ms | 16.7 ms |
+| Total Train Time | ~754s | ~97s |
+
+> MAMBA achieves **28% better perplexity** with **42% fewer parameters** than the Transformer.
+
+### Training Curves
+![Training Results](full_results.png)
+
+### Complexity Scaling
+![Complexity Analysis](complexity_analysis.png)
+
+### Generated Text Sample (MAMBA)
+```
+HAMLET:
+the continued the ground be such a one that be so.
+POLIXENES: Then the father, I have to what how my father
+That would away the may life, here stay to such in the sorrow...
+```
+
+---
+
+## 📁 Repository Structure
 
 ```
-Input tokens
-     │
-Embedding (vocab → d_model)
-     │
-  ×N_LAYERS
-┌─────────────────────────┐
-│       MambaBlock        │
-│  LayerNorm              │
-│  in_proj (×2)           │
-│  Conv1D (local context) │
-│  SiLU                   │
-│  SelectiveSSM (S6)      │
-│    ├── A (fixed, log)   │
-│    ├── B, C, Δ (input)  │
-│    └── Parallel Scan    │
-│  × SiLU(z) gate         │
-│  out_proj + residual    │
-└─────────────────────────┘
-     │
-LayerNorm → LM Head → Logits
-```
-
-### Ce qui rend MAMBA "Sélectif" (S6)
-
-Les SSM classiques (S4) utilisent des matrices A, B, C **fixes**. L'innovation MAMBA : **A, B, C et Δ sont toutes fonctions de l'entrée** `u_t`, ce qui permet au modèle de sélectivement mémoriser ou oublier selon le contenu.
-
----
-
-## ⚡ Parallel Associative Scan
-
-L'algorithme clé du projet : remplacer la récurrence séquentielle O(L) par un scan parallèle O(log L).
-
-```
-L=8:  h0  h1  h2  h3  h4  h5  h6  h7
-Level1: h01  h23  h45  h67        (4 ops parallèles)
-Level2:  h0123    h4567            (2 ops parallèles)
-Level3:   h01234567                (1 op)
-→ Seulement 3 passes GPU pour L=8, log₂(L) en général
+mambaDeep_Learning/
+├── mamba_improved.ipynb        # Main notebook — full MAMBA implementation
+├── README.md                   # This file
+├── requirements.txt            # Python dependencies
+├── full_results.png            # Training curves & comparison charts
+├── complexity_analysis.png     # O(L log L) vs O(L²) scaling plots
+└── mamba_v2_shakespeare.pt     # Pre-trained model checkpoint
 ```
 
 ---
 
-## 📊 Complexité
+## ⚡ Quick Start
 
-| Modèle | Temps | Mémoire | Parallélisable |
-|--------|-------|---------|----------------|
-| RNN/LSTM | O(L) | O(1) | ❌ Séquentiel |
-| Transformer | O(L²) | O(L²) | ✅ Totalement parallèle |
-| S4 (SSM classique) | O(L log L) | O(L) | ✅ |
-| **MAMBA (S6)** | **O(L log L)** | **O(L)** | ✅ **Parallel scan** |
+### Option 1 — Google Colab (recommended)
+1. Open `mamba_improved.ipynb` in [Google Colab](https://colab.research.google.com)
+2. Enable GPU: **Runtime → Change runtime type → T4 GPU**
+3. Run all cells: `Ctrl+F9`
 
-Pour L=4096 : Transformer → 16,7M opérations · MAMBA → 49K opérations (**×341 plus rapide**)
-
----
-
-## 🗂️ Contenu du notebook
-
-| Section | Description |
-|---------|-------------|
-| 1. Setup | Imports, device, seeds |
-| 2. Dataset | TinyShakespeare, tokenisation caractère, split train/val |
-| 3. SSM Theory | Fondations mathématiques, ZOH discretization |
-| 4. Parallel Scan | Implémentation + vérification vs scan séquentiel |
-| 5. Architecture | `SelectiveSSM`, `MambaBlock`, `MambaLM` |
-| 6. Transformer | Baseline GPT-style pour comparaison |
-| 7. Training | AdamW + CosineAnnealing, 5000 itérations |
-| 8. Résultats | Loss, perplexity, vitesse, comparaisons visuelles |
-| 9. Génération | Démo de génération de texte Shakespeare |
-| 10. Complexité | Analyse et visualisation des courbes de scaling |
-| 11. Summary | Conclusions et sauvegarde du checkpoint |
-
----
-
-## 🚀 Installation & Usage
-
-### Prérequis
-
+### Option 2 — Local setup
 ```bash
+# Clone the repository
+git clone https://github.com/myriamBenAbd0607/mambaDeep_Learning.git
+cd mambaDeep_Learning
+
+# Install dependencies
 pip install -r requirements.txt
+
+# Launch notebook
+jupyter notebook mamba_improved.ipynb
 ```
 
+### Requirements
 ```
-# requirements.txt
 torch>=2.0.0
 numpy
 matplotlib
 ```
 
-### Lancer le notebook
+---
 
-```bash
-jupyter notebook mamba_final_complete.ipynb
+## 🏗️ Architecture
+
+### MAMBA Block
+```
+Input x (B, L, d_model)
+       │
+   LayerNorm
+       │
+   in_proj ──────────────┐
+       │                 │
+    x_main             z (gate)
+       │
+   Conv1D (local context, kernel=4)
+       │
+    SiLU
+       │
+  SelectiveSSM (S6)
+   ├── A: fixed log-parameterized  (d_inner, d_state)
+   ├── Δ, B, C: input-dependent   ← KEY INNOVATION
+   └── Parallel Associative Scan  ← O(log L) depth
+       │
+    × SiLU(z)   ← gating
+       │
+   out_proj
+       │
+  + residual
+       │
+Output y (B, L, d_model)
 ```
 
-Ou ouvrir directement dans **VS Code** avec l'extension Jupyter.
+### Parallel Scan — The Core Idea
+```
+Recurrence: h_t = A_bar_t * h_{t-1} + B_bar_t * u_t
 
-> ⚠️ L'entraînement est significativement plus rapide avec un GPU. Sans GPU, s'attendre à plusieurs heures pour 5000 itérations.
+Naive loop:  O(L) sequential steps — no GPU parallelism
+Parallel:    O(log L) depth via divide-and-conquer
 
----
-
-## 📈 Résultats
-
-Les deux modèles sont entraînés dans les mêmes conditions (même `d_model=128`, 4 layers, 5000 itérations, AdamW lr=3e-4) :
-
-- MAMBA atteint une **perplexité comparable** au Transformer avec moins de paramètres
-- MAMBA présente un **meilleur scaling** sur les longues séquences (O(L log L) vs O(L²))
-- Le **parallel scan** est la clé d'ingénierie : profondeur O(log L) sur GPU
-
----
-
-## 🛠️ Outils utilisés
-
-| Outil | Usage |
-|-------|-------|
-| **PyTorch** | Implémentation du modèle |
-| **Google Colab** | Entraînement avec GPU |
-| **VS Code** | Développement local |
-| **Claude (Anthropic)** | Génération de code, explications, design d'architecture |
-| **GitHub Copilot** | Complétion de code |
-| **ChatGPT** | Vérification des dérivations mathématiques |
+L=8 example:
+  Level 1: combine pairs     → 4 parallel ops
+  Level 2: combine pairs     → 2 parallel ops
+  Level 3: combine pairs     → 1 op
+  Fill even positions        → 4 parallel ops
+  Total: 3 passes instead of 8!
+```
 
 ---
 
-## 📚 Références
+## 🤖 AI Tools Used
 
-- Gu & Dao (2023). *Mamba: Linear-Time Sequence Modeling with Selective State Spaces*. [arXiv:2312.00752](https://arxiv.org/abs/2312.00752)
-- Gu et al. (2021). *Efficiently Modeling Long Sequences with Structured State Spaces (S4)*. [arXiv:2111.00396](https://arxiv.org/abs/2111.00396)
-- Karpathy — [char-rnn / TinyShakespeare](https://github.com/karpathy/char-rnn)
-- Dépôt officiel MAMBA : [github.com/state-spaces/mamba](https://github.com/state-spaces/mamba)
+| Tool | Usage |
+|------|-------|
+| **Claude (Anthropic)** | Code generation, architecture design, explanations |
+| **GitHub Copilot** | Code completion |
+| **ChatGPT** | Cross-checking math derivations |
+| **Gamma.app** | AI-powered presentation generation |
+| **DALL-E** | AI-generated images for slides |
+
+---
+
+## 📚 References
+
+1. **Gu & Dao (2023)** — *Mamba: Linear-Time Sequence Modeling with Selective State Spaces*  
+   [arXiv:2312.00752](https://arxiv.org/abs/2312.00752)
+
+2. **Gu et al. (2021)** — *Efficiently Modeling Long Sequences with Structured State Spaces (S4)*  
+   [arXiv:2111.00396](https://arxiv.org/abs/2111.00396)
+
+3. **Official MAMBA repository**  
+   [github.com/state-spaces/mamba](https://github.com/state-spaces/mamba)
+
+4. **Karpathy (2022)** — *nanoGPT / char-rnn* (TinyShakespeare dataset)  
+   [github.com/karpathy/char-rnn](https://github.com/karpathy/char-rnn)
+
+---
+
+## 👥 Authors
+
+- **Student** — ENIS, Deep Learning Course 2025–2026
+- **Colleague** — ENIS, Deep Learning Course 2025–2026
+
+---
+
+*This project was built as part of the Deep Learning course at ENIS (École Nationale d'Ingénieurs de Sfax).*
